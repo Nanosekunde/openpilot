@@ -1,17 +1,14 @@
 #!/usr/bin/env python
 import os
 import sys
-import struct
 from collections import defaultdict
 from common.realtime import sec_since_boot
-import zmq
 import selfdrive.messaging as messaging
 from selfdrive.services import service_list
 
 
-def can_printer(bus=0, max_msg=0x10000, addr="127.0.0.1"):
-  context = zmq.Context()
-  logcan = messaging.sub_sock(context, service_list['can'].port, addr=addr)
+def can_printer(bus=0, max_msg=None, addr="127.0.0.1"):
+  logcan = messaging.sub_sock(service_list['can'].port, addr=addr)
 
   start = sec_since_boot()
   lp = sec_since_boot()
@@ -28,9 +25,9 @@ def can_printer(bus=0, max_msg=0x10000, addr="127.0.0.1"):
       dd = chr(27) + "[2J"
       dd += "%5.2f\n" % (sec_since_boot() - start)
       for k,v in sorted(zip(msgs.keys(), map(lambda x: x[-1].encode("hex"), msgs.values()))):
-        if k < max_msg:
+        if max_msg is None or k < max_msg:
           dd += "%s(%6d) %s\n" % ("%04X(%4d)" % (k,k),len(msgs[k]), v)
-      print dd
+      print(dd)
       lp = sec_since_boot()
 
 if __name__ == "__main__":

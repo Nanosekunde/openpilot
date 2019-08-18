@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-import pygame
-from plant import Plant
-from selfdrive.config import CruiseButtons
+import pygame # pylint: disable=import-error
+from selfdrive.test.plant.plant import Plant
+from selfdrive.car.honda.values import CruiseButtons
 import numpy as np
 import selfdrive.messaging as messaging
 import math
@@ -21,7 +21,7 @@ def rot_center(image, angle):
   return rot_image
 
 def car_w_color(c):
-  car = pygame.Surface((METER*CAR_LENGTH, METER*CAR_LENGTH))
+  car = pygame.Surface((METER*CAR_LENGTH, METER*CAR_LENGTH))  # pylint: disable=too-many-function-args
   car.set_alpha(0)
   car.fill((10,10,10))
   car.set_alpha(128)
@@ -41,7 +41,7 @@ if __name__ == "__main__":
   plant = Plant(100, distance_lead = 40.0)
 
   control_offset = 2.0
-  control_pts = zip(np.arange(0, 100.0, 10.0), [50.0 + control_offset]*10)
+  control_pts = list(zip(np.arange(0, 100.0, 10.0), [50.0 + control_offset]*10))
 
   def pt_to_car(pt):
     x,y = pt
@@ -73,9 +73,9 @@ if __name__ == "__main__":
       x.prob = 0.0
       x.std = 1.0
 
-    car_pts = map(pt_to_car, control_pts)
+    car_pts = [pt_to_car(pt) for pt in control_pts]
 
-    print car_pts
+    print(car_pts)
 
     car_poly = np.polyfit([x[0] for x in car_pts], [x[1] for x in car_pts], 3)
     md.model.path.points = np.polyval(car_poly, np.arange(0, 50)).tolist()
@@ -90,9 +90,9 @@ if __name__ == "__main__":
     cary += plant.speed * plant.ts * math.sin(heading)
 
     # positive steering angle = steering right
-    print plant.angle_steer
+    print(plant.angle_steer)
     heading += plant.angle_steer * plant.ts
-    print heading
+    print(heading)
 
     # draw my car
     display.blit(pygame.transform.rotate(car, 90-math.degrees(heading)), (carx*METER, cary*METER))
@@ -101,9 +101,9 @@ if __name__ == "__main__":
     for x,y in control_pts:
       pygame.draw.circle(display, (255,255,0), (int(x * METER),int(y * METER)), 2)
 
-    # draw path 
+    # draw path
     path_pts = zip(np.arange(0, 50), md.model.path.points)
-    
+
     for x,y in path_pts:
       x,y = pt_from_car((x,y))
       pygame.draw.circle(display, (0,255,0), (int(x * METER),int(y * METER)), 1)
@@ -118,5 +118,3 @@ if __name__ == "__main__":
     """
 
     pygame.display.flip()
-
-

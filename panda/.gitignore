@@ -2,6 +2,8 @@
 .*.swp
 .*.swo
 *.o
+*.so
+*.d
 a.out
 *~
 .#*
@@ -10,3 +12,4 @@ pandacan.egg-info/
 board/obj/
 examples/output.csv
 .DS_Store
+nosetests.xml

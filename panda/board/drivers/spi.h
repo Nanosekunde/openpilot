@@ -1,11 +1,16 @@
 // IRQs: DMA2_Stream2, DMA2_Stream3, EXTI4
 
+void spi_init(void);
+int spi_cb_rx(uint8_t *data, int len, uint8_t *data_out);
+
+// end API
+
 #define SPI_BUF_SIZE 256
 uint8_t spi_buf[SPI_BUF_SIZE];
 int spi_buf_count = 0;
 int spi_total_count = 0;
 
-void spi_init() {
+void spi_init(void) {
   //puts("SPI init\n");
   SPI1->CR1 = SPI_CR1_SPE;
 
@@ -23,8 +28,8 @@ void spi_init() {
 
   // setup interrupt on falling edge of SPI enable (on PA4)
   SYSCFG->EXTICR[2] = SYSCFG_EXTICR2_EXTI4_PA;
-  EXTI->IMR = (1 << 4);
-  EXTI->FTSR = (1 << 4);
+  EXTI->IMR |= (1U << 4);
+  EXTI->FTSR |= (1U << 4);
   NVIC_EnableIRQ(EXTI4_IRQn);
 }
 
@@ -40,6 +45,7 @@ void spi_tx_dma(void *addr, int len) {
 
   // channel3, increment memory, memory -> periph, enable
   DMA2_Stream3->CR = DMA_SxCR_CHSEL_1 | DMA_SxCR_CHSEL_0 | DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_EN;
+  delay(0);
   DMA2_Stream3->CR |= DMA_SxCR_TCIE;
 
   SPI1->CR2 |= SPI_CR2_TXDMAEN;
@@ -65,6 +71,7 @@ void spi_rx_dma(void *addr, int len) {
 
   // channel3, increment memory, periph -> memory, enable
   DMA2_Stream2->CR = DMA_SxCR_CHSEL_1 | DMA_SxCR_CHSEL_0 | DMA_SxCR_MINC | DMA_SxCR_EN;
+  delay(0);
   DMA2_Stream2->CR |= DMA_SxCR_TCIE;
 
   SPI1->CR2 |= SPI_CR2_RXDMAEN;
@@ -78,7 +85,7 @@ uint8_t spi_tx_buf[0x44];
 // SPI RX
 void DMA2_Stream2_IRQHandler(void) {
   int *resp_len = (int*)spi_tx_buf;
-  memset(spi_tx_buf, 0xaa, 0x44);
+  (void)memset(spi_tx_buf, 0xaa, 0x44);
   *resp_len = spi_cb_rx(spi_buf, 0x14, spi_tx_buf+4);
   #ifdef DEBUG_SPI
     puts("SPI write: ");
@@ -95,7 +102,7 @@ void DMA2_Stream2_IRQHandler(void) {
 void DMA2_Stream3_IRQHandler(void) {
   #ifdef DEBUG_SPI
     puts("SPI handshake\n");
-  #endif  
+  #endif
 
   // reset handshake back to pull up
   set_gpio_mode(GPIOB, 0, MODE_INPUT);
@@ -106,12 +113,12 @@ void DMA2_Stream3_IRQHandler(void) {
 }
 
 void EXTI4_IRQHandler(void) {
-  volatile int pr = EXTI->PR;
+  volatile unsigned int pr = EXTI->PR & (1U << 4);
   #ifdef DEBUG_SPI
     puts("exti4\n");
   #endif
   // SPI CS falling
-  if (pr & (1 << 4)) {
+  if ((pr & (1U << 4)) != 0U) {
     spi_total_count = 0;
     spi_rx_dma(spi_buf, 0x14);
   }

@@ -1,14 +1,9 @@
 #!/usr/bin/env python
-import os
-import time
-import zmq
-from common.realtime import sec_since_boot
-import common.numpy_fast as np
 from cereal import car
 from selfdrive.config import Conversions as CV
 from selfdrive.services import service_list
+from selfdrive.swaglog import cloudlog
 import selfdrive.messaging as messaging
-from selfdrive.controls.lib.drive_helpers import EventTypes as ET, create_event
 
 # mocked car interface to work with chffrplus
 TS = 0.01  # 100Hz
@@ -18,18 +13,19 @@ LPG = 2 * 3.1415 * YAW_FR * TS / (1 + 2 * 3.1415 * YAW_FR * TS)
 
 
 class CarInterface(object):
-  def __init__(self, CP, sendcan=None):
+  def __init__(self, CP, CarController):
 
     self.CP = CP
+    self.CC = CarController
 
-    print "Using Mock Car Interface"
-    context = zmq.Context()
+    cloudlog.debug("Using Mock Car Interface")
 
     # TODO: subscribe to phone sensor
-    self.sensor = messaging.sub_sock(context, service_list['sensorEvents'].port)
-    self.gps = messaging.sub_sock(context, service_list['gpsLocation'].port)
+    self.sensor = messaging.sub_sock(service_list['sensorEvents'].port)
+    self.gps = messaging.sub_sock(service_list['gpsLocation'].port)
 
     self.speed = 0.
+    self.prev_speed = 0.
     self.yaw_rate = 0.
     self.yaw_rate_meas = 0.
 
@@ -42,15 +38,15 @@ class CarInterface(object):
     return 1.0
 
   @staticmethod
-  def get_params(candidate, fingerprint):
+  def get_params(candidate, fingerprint, vin="", is_panda_black=False):
 
     ret = car.CarParams.new_message()
 
     ret.carName = "mock"
-    ret.radarName = "mock"
     ret.carFingerprint = candidate
 
-    ret.safetyModel = car.CarParams.SafetyModels.noOutput
+    ret.safetyModel = car.CarParams.SafetyModel.noOutput
+    ret.openpilotLongitudinalControl = False
 
     # FIXME: hardcoding honda civic 2016 touring params so they can be used to
     # scale unknown params for other cars
@@ -59,8 +55,6 @@ class CarInterface(object):
     ret.wheelbase = 2.70
     ret.centerToFront = ret.wheelbase * 0.5
     ret.steerRatio = 13. # reasonable
-    ret.longPidDeadzoneBP = [0.]
-    ret.longPidDeadzoneV = [0.]
     ret.tireStiffnessFront = 1e6    # very stiff to neglect slip
     ret.tireStiffnessRear = 1e6     # very stiff to neglect slip
     ret.steerRatioRear = 0.
@@ -72,16 +66,18 @@ class CarInterface(object):
     ret.brakeMaxBP = [0.]
     ret.brakeMaxV = [0.]
 
-    ret.longitudinalKpBP = [0.]
-    ret.longitudinalKpV = [0.]
-    ret.longitudinalKiBP = [0.]
-    ret.longitudinalKiV = [0.]
+    ret.longitudinalTuning.kpBP = [0.]
+    ret.longitudinalTuning.kpV = [0.]
+    ret.longitudinalTuning.kiBP = [0.]
+    ret.longitudinalTuning.kiV = [0.]
+    ret.longitudinalTuning.deadzoneBP = [0.]
+    ret.longitudinalTuning.deadzoneV = [0.]
+    ret.steerActuatorDelay = 0.
 
     return ret
 
   # returns a car.CarState
-  def update(self, c):
-
+  def update(self, c, can_strings):
     # get basic data from phone and gps since CAN isn't connected
     sensors = messaging.recv_sock(self.sensor)
     if sensors is not None:
@@ -91,6 +87,7 @@ class CarInterface(object):
 
     gps = messaging.recv_sock(self.gps)
     if gps is not None:
+      self.prev_speed = self.speed
       self.speed = gps.gpsLocation.speed
 
     # create message
@@ -99,7 +96,11 @@ class CarInterface(object):
     # speeds
     ret.vEgo = self.speed
     ret.vEgoRaw = self.speed
-    ret.aEgo = 0.
+    a = self.speed - self.prev_speed
+
+    ret.aEgo = a
+    ret.brakePressed = a < -0.5
+
     self.yawRate = LPG * self.yaw_rate_meas + (1. - LPG) * self.yaw_rate
     ret.yawRate = self.yaw_rate
     ret.standstill = self.speed < 0.01
@@ -111,11 +112,10 @@ class CarInterface(object):
     ret.steeringAngle = curvature * self.CP.steerRatio * self.CP.wheelbase * CV.RAD_TO_DEG
 
     events = []
-    #events.append(create_event('passive', [ET.NO_ENTRY, ET.IMMEDIATE_DISABLE]))
     ret.events = events
 
     return ret.as_reader()
 
   def apply(self, c):
     # in mock no carcontrols
-    return False
+    return []
